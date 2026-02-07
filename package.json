@@ -1,0 +1,17 @@
+{
+  "name": "ghostbot",
+  "private": true,
+  "scripts": {
+    "build:contracts": "cd packages/contracts && forge build",
+    "build:sdk": "cd packages/sdk && pnpm run build",
+    "build:bot": "cd packages/bot && pnpm run build",
+    "generate:abis": "node scripts/copy-abis.mjs",
+    "test:contracts": "cd packages/contracts && forge test -vvv",
+    "test:bot": "cd packages/bot && pnpm run test",
+    "dev:bot": "cd packages/bot && pnpm run dev"
+  },
+  "engines": {
+    "node": ">=18",
+    "pnpm": ">=9"
+  }
+}

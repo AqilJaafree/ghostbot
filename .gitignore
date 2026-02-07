@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+out/
+cache/
+broadcast/
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+
+# Foundry
+packages/contracts/cache/
+packages/contracts/out/
+packages/contracts/broadcast/
+
+# Claude Code / AI tooling
+.claude
+.claude-plugin
+.claude/
+CLAUDE.md
+
+# Security audit (internal only)
+AUDIT.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+.directory
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript incremental compilation
+*.tsbuildinfo
+
+# Coverage
+coverage/
+lcov.info
+
+# Misc
+.turbo/
+.vercel/
+.next/

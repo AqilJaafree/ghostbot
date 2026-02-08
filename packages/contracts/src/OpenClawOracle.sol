@@ -4,7 +4,6 @@ pragma solidity ^0.8.26;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IOpenClawOracle} from "./interfaces/IOpenClawOracle.sol";
 import {RebalanceSignal, FeeRecommendation} from "./types/DataTypes.sol";
-
 contract OpenClawOracle is IOpenClawOracle, Ownable {
     uint256 public constant MAX_SIGNALS_PER_POOL = 32;
 
@@ -22,7 +21,13 @@ contract OpenClawOracle is IOpenClawOracle, Ownable {
     error OnlyBot();
     error OnlyHook();
     error StaleSignal();
+    error FutureTimestamp();
     error InvalidConfidence();
+
+    event RebalanceSignalPosted(bytes32 indexed poolId, uint256 positionId, uint8 confidence);
+    event FeeRecommendationPosted(bytes32 indexed poolId, uint24 fee, uint8 confidence);
+    event SignalsCleared(bytes32 indexed poolId, uint256 count);
+    event OrderExecutionReported(bytes32 indexed poolId, uint256 indexed orderId);
 
     modifier onlyBot() {
         if (msg.sender != bot) revert OnlyBot();
@@ -44,12 +49,20 @@ contract OpenClawOracle is IOpenClawOracle, Ownable {
         hook = _hook;
     }
 
+    /// @notice Allows the hook to report that a limit order was executed, for off-chain indexing.
+    /// @param poolId The pool identifier.
+    /// @param orderId The limit order that was executed.
+    function reportOrderExecution(bytes32 poolId, uint256 orderId) external onlyHook {
+        emit OrderExecutionReported(poolId, orderId);
+    }
+
     function setSignalTTL(uint256 _ttl) external onlyOwner {
         signalTTL = _ttl;
     }
 
     function postRebalanceSignal(bytes32 poolId, RebalanceSignal calldata signal) external onlyBot {
         if (signal.confidence > 100) revert InvalidConfidence();
+        if (signal.timestamp > block.timestamp) revert FutureTimestamp();
         if (block.timestamp - signal.timestamp > signalTTL) revert StaleSignal();
 
         RebalanceSignal[] storage signals = _signals[poolId];
@@ -70,6 +83,7 @@ contract OpenClawOracle is IOpenClawOracle, Ownable {
         onlyBot
     {
         if (recommendation.confidence > 100) revert InvalidConfidence();
+        if (recommendation.timestamp > block.timestamp) revert FutureTimestamp();
         if (block.timestamp - recommendation.timestamp > signalTTL) revert StaleSignal();
 
         _feeRecommendations[poolId] = recommendation;
@@ -129,14 +143,22 @@ contract OpenClawOracle is IOpenClawOracle, Ownable {
     function clearOldSignals(bytes32 poolId) external {
         RebalanceSignal[] storage stored = _signals[poolId];
         uint256 cleared;
+        uint256 i;
 
-        for (uint256 i; i < stored.length; i++) {
+        while (i < stored.length) {
             if (block.timestamp - stored[i].timestamp > signalTTL) {
-                // Zero out the slot
-                delete stored[i];
+                // Swap-and-pop to actually shrink the array
+                stored[i] = stored[stored.length - 1];
+                stored.pop();
                 cleared++;
+                // Do not increment i; re-check the swapped element
+            } else {
+                i++;
             }
         }
+
+        // Reset write index to match new array length
+        _signalWriteIndex[poolId] = stored.length;
 
         emit SignalsCleared(poolId, cleared);
     }

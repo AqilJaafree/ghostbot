@@ -19,7 +19,9 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {OpenClawOracle} from "../src/OpenClawOracle.sol";
 import {OpenClawACLMHook} from "../src/OpenClawACLMHook.sol";
+import {IOpenClawACLMHook} from "../src/interfaces/IOpenClawACLMHook.sol";
 import {IOpenClawOracle} from "../src/interfaces/IOpenClawOracle.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Position, RebalanceSignal} from "../src/types/DataTypes.sol";
 
 contract RebalanceTest is Test {
@@ -72,6 +74,7 @@ contract RebalanceTest is Test {
         hook = OpenClawACLMHook(hookAddr);
         hook.setOracle(IOpenClawOracle(address(oracle)));
         hook.setRebalanceCooldown(0); // Disable cooldown for testing
+        hook.setMinConfidence(10); // Set to valid floor
         oracle.setHook(hookAddr);
 
         MockERC20 tokenA = new MockERC20("TokenA", "TKA", 18);
@@ -94,7 +97,7 @@ contract RebalanceTest is Test {
         manager.initialize(key, SQRT_PRICE_1_1);
     }
 
-    function test_rebalance_triggeredOnSwap() public {
+    function test_rebalancePosition_movesLiquidity() public {
         // Add position with autoRebalance enabled (salt bit 0 = 1)
         bytes32 salt = bytes32(uint256(1));
         BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
@@ -110,41 +113,24 @@ contract RebalanceTest is Test {
         assertEq(posBefore.tickUpper, 120);
         assertTrue(posBefore.autoRebalance);
 
-        // Move price significantly out of range by doing a large swap
-        // First add wide liquidity so swap can execute
+        // Add wide liquidity so the pool has tokens to work with
         BaseCustomAccounting.AddLiquidityParams memory wideLiq = BaseCustomAccounting.AddLiquidityParams(
             100 ether, 100 ether, 90 ether, 90 ether, MAX_DEADLINE, MIN_TICK, MAX_TICK, bytes32(uint256(2))
         );
         hook.addLiquidity(wideLiq);
 
-        // Do a swap to move tick - this puts the narrow position out of range
-        _doSwap(true, -50 ether);
-
-        // Get current tick after swap
-        (, int24 currentTick,,) = manager.getSlot0(poolId);
-
-        // Post rebalance signal from bot
-        bytes32 id = PoolId.unwrap(poolId);
-        RebalanceSignal memory signal = RebalanceSignal({
-            positionId: positionId,
-            newTickLower: currentTick - 120,
-            newTickUpper: currentTick + 120,
-            confidence: 90,
-            timestamp: block.timestamp
-        });
-        vm.prank(bot);
-        oracle.postRebalanceSignal(id, signal);
-
-        // Next swap triggers rebalance check
-        _doSwap(false, -1 ether);
+        // Call rebalancePosition directly (owner = this contract)
+        hook.rebalancePosition(positionId, -240, 240);
 
         // Verify position was rebalanced (ticks changed)
         Position memory posAfter = hook.getPosition(positionId);
-        assertTrue(posAfter.tickLower != posBefore.tickLower || posAfter.tickUpper != posBefore.tickUpper);
+        assertEq(posAfter.tickLower, -240);
+        assertEq(posAfter.tickUpper, 240);
+        assertTrue(posAfter.lastRebalanceTime == block.timestamp);
     }
 
-    function test_rebalance_respects_cooldown() public {
-        hook.setRebalanceCooldown(1 hours); // Re-enable cooldown
+    function test_rebalancePosition_respectsCooldown() public {
+        hook.setRebalanceCooldown(1 hours);
 
         bytes32 salt = bytes32(uint256(1));
         BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
@@ -161,27 +147,109 @@ contract RebalanceTest is Test {
         );
         hook.addLiquidity(wideLiq);
 
-        // Move price out of range
+        // Should revert because cooldown hasn't elapsed
+        vm.expectRevert(OpenClawACLMHook.RebalanceCooldownNotElapsed.selector);
+        hook.rebalancePosition(positionId, -240, 240);
+
+        // Warp past cooldown
+        vm.warp(block.timestamp + 1 hours + 1);
+        hook.rebalancePosition(positionId, -240, 240);
+
+        Position memory pos = hook.getPosition(positionId);
+        assertEq(pos.tickLower, -240);
+    }
+
+    function test_rebalancePosition_invalidTickRange_reverts() public {
+        bytes32 salt = bytes32(uint256(1));
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, -120, 120, salt
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[0];
+
+        // Lower >= upper
+        vm.expectRevert(OpenClawACLMHook.InvalidTickRange.selector);
+        hook.rebalancePosition(positionId, 120, -120);
+    }
+
+    function test_rebalancePosition_nonAutoRebalance_reverts() public {
+        // Salt bit 0 = 0 -> no auto-rebalance
+        bytes32 salt = bytes32(uint256(0));
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, -120, 120, salt
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[0];
+
+        vm.expectRevert(OpenClawACLMHook.NotAutoRebalance.selector);
+        hook.rebalancePosition(positionId, -240, 240);
+    }
+
+    function test_rebalancePosition_notFound_reverts() public {
+        vm.expectRevert(OpenClawACLMHook.PositionNotFound.selector);
+        hook.rebalancePosition(999, -240, 240);
+    }
+
+    function test_rebalancePosition_onlyOwner() public {
+        bytes32 salt = bytes32(uint256(1));
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, -120, 120, salt
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[0];
+
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert();
+        hook.rebalancePosition(positionId, -240, 240);
+    }
+
+    function test_afterSwap_emitsRebalanceRequested() public {
+        // Add position with autoRebalance enabled
+        bytes32 salt = bytes32(uint256(1));
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, -120, 120, salt
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[0];
+
+        // Add wide liquidity
+        BaseCustomAccounting.AddLiquidityParams memory wideLiq = BaseCustomAccounting.AddLiquidityParams(
+            100 ether, 100 ether, 90 ether, 90 ether, MAX_DEADLINE, MIN_TICK, MAX_TICK, bytes32(uint256(2))
+        );
+        hook.addLiquidity(wideLiq);
+
+        // Move price significantly out of range
         _doSwap(true, -50 ether);
 
         (, int24 currentTick,,) = manager.getSlot0(poolId);
-        bytes32 id = PoolId.unwrap(poolId);
 
-        // Post rebalance signal
-        vm.prank(bot);
-        oracle.postRebalanceSignal(id, RebalanceSignal({
+        // Post rebalance signal from bot
+        bytes32 id = PoolId.unwrap(poolId);
+        RebalanceSignal memory signal = RebalanceSignal({
             positionId: positionId,
             newTickLower: currentTick - 120,
             newTickUpper: currentTick + 120,
             confidence: 90,
             timestamp: block.timestamp
-        }));
+        });
+        vm.prank(bot);
+        oracle.postRebalanceSignal(id, signal);
 
-        // Swap but cooldown hasn't elapsed, so no rebalance
+        // Next swap should emit RebalanceRequested (not actually rebalance)
+        vm.expectEmit(true, false, false, false);
+        emit OpenClawACLMHook.RebalanceRequested(positionId, 0, 0);
         _doSwap(false, -1 ether);
 
+        // Position should NOT have been rebalanced (only event emitted)
         Position memory pos = hook.getPosition(positionId);
-        // Position should NOT have been rebalanced (cooldown active)
         assertEq(pos.tickLower, -120);
         assertEq(pos.tickUpper, 120);
     }
@@ -206,7 +274,10 @@ contract RebalanceTest is Test {
         (, int24 currentTick,,) = manager.getSlot0(poolId);
         bytes32 id = PoolId.unwrap(poolId);
 
-        // Post with low confidence (below 70)
+        // Post with low confidence (below minConfidence = 10 for this test,
+        // but we set it higher for this specific check)
+        hook.setMinConfidence(70);
+
         vm.prank(bot);
         oracle.postRebalanceSignal(id, RebalanceSignal({
             positionId: positionId,
@@ -219,10 +290,10 @@ contract RebalanceTest is Test {
         _doSwap(false, -1 ether);
 
         Position memory pos = hook.getPosition(positionId);
-        assertEq(pos.tickLower, -120); // Not rebalanced
+        assertEq(pos.tickLower, -120); // Not rebalanced (low confidence filtered)
     }
 
-    function test_needsRebalancing_outOfRange() public view {
+    function test_needsRebalancing_outOfRange() public pure {
         // Test the logic: current tick outside range
         assertTrue(_callNeedsRebalancing(-200, -120, 120)); // Below range
         assertTrue(_callNeedsRebalancing(200, -120, 120));  // Above range
@@ -237,6 +308,98 @@ contract RebalanceTest is Test {
         if (current - lower < threshold) return true;
         if (upper - current < threshold) return true;
         return false;
+    }
+
+    // ── H-4 fix: Rebalance surplus is tracked and claimable ────────────
+    function test_rebalanceSurplus_trackedAndClaimable() public {
+        // Add wide liquidity first so the pool has tokens for swaps
+        BaseCustomAccounting.AddLiquidityParams memory wideLiq = BaseCustomAccounting.AddLiquidityParams(
+            100 ether, 100 ether, 90 ether, 90 ether, MAX_DEADLINE, MIN_TICK, MAX_TICK, bytes32(uint256(2))
+        );
+        hook.addLiquidity(wideLiq);
+
+        // Add a wide-range position with autoRebalance enabled (centered around tick 0)
+        bytes32 salt = bytes32(uint256(1));
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, -3600, 3600, salt
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[1];
+
+        // Move price slightly to make removal return both tokens asymmetrically
+        _doSwap(true, -5 ether);
+        (, int24 currentTick,,) = manager.getSlot0(poolId);
+
+        // Rebalance to a range entirely above current price. When price is below
+        // the new range, only token1 is needed for the add. The token0 portion
+        // from removal becomes surplus.
+        int24 newLower = _snapToTickSpacing(currentTick + 120, TICK_SPACING);
+        int24 newUpper = _snapToTickSpacing(currentTick + 3600, TICK_SPACING);
+
+        hook.rebalancePosition(positionId, newLower, newUpper);
+
+        // Check that surplus was tracked
+        uint256 surplus0 = hook.rebalanceSurplus(positionId, currency0);
+        uint256 surplus1 = hook.rebalanceSurplus(positionId, currency1);
+
+        bool hasSurplus = surplus0 > 0 || surplus1 > 0;
+        assertTrue(hasSurplus, "Should have surplus after rebalance to above-price range");
+
+        // Claim the surplus
+        if (surplus0 > 0) {
+            uint256 balBefore = MockERC20(Currency.unwrap(currency0)).balanceOf(address(this));
+            hook.claimRebalanceSurplus(positionId, currency0);
+            uint256 balAfter = MockERC20(Currency.unwrap(currency0)).balanceOf(address(this));
+            assertEq(balAfter - balBefore, surplus0, "Should receive surplus0 tokens");
+            assertEq(hook.rebalanceSurplus(positionId, currency0), 0, "Surplus should be zeroed after claim");
+        }
+        if (surplus1 > 0) {
+            uint256 balBefore = MockERC20(Currency.unwrap(currency1)).balanceOf(address(this));
+            hook.claimRebalanceSurplus(positionId, currency1);
+            uint256 balAfter = MockERC20(Currency.unwrap(currency1)).balanceOf(address(this));
+            assertEq(balAfter - balBefore, surplus1, "Should receive surplus1 tokens");
+            assertEq(hook.rebalanceSurplus(positionId, currency1), 0, "Surplus should be zeroed after claim");
+        }
+    }
+
+    function _snapToTickSpacing(int24 tick, int24 tickSpacing) internal pure returns (int24) {
+        int24 compressed = tick / tickSpacing;
+        if (tick < 0 && tick % tickSpacing != 0) compressed--;
+        return compressed * tickSpacing;
+    }
+
+    // ── H-4 fix: Claiming surplus with no surplus reverts ─────────────
+    function test_claimRebalanceSurplus_noSurplus_reverts() public {
+        bytes32 salt = bytes32(uint256(1));
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, -120, 120, salt
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[0];
+
+        // No rebalance happened, so no surplus
+        vm.expectRevert(OpenClawACLMHook.NoSurplusToClaim.selector);
+        hook.claimRebalanceSurplus(positionId, currency0);
+    }
+
+    // ── H-4 fix: Only position owner can claim surplus ────────────────
+    function test_claimRebalanceSurplus_notOwner_reverts() public {
+        bytes32 salt = bytes32(uint256(1));
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, -120, 120, salt
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[0];
+
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert(OpenClawACLMHook.NotPositionOwner.selector);
+        hook.claimRebalanceSurplus(positionId, currency0);
     }
 
     function _doSwap(bool zeroForOne, int256 amount) internal {

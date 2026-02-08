@@ -24,6 +24,8 @@ export interface LimitOrder {
   linkedPositionId: bigint;
   executed: boolean;
   cancelled: boolean;
+  claimCurrency: `0x${string}`;
+  claimAmount: bigint;
 }
 
 export interface PoolStats {

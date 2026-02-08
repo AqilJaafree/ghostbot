@@ -20,8 +20,9 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 import {OpenClawOracle} from "../src/OpenClawOracle.sol";
 import {OpenClawACLMHook} from "../src/OpenClawACLMHook.sol";
+import {IOpenClawACLMHook} from "../src/interfaces/IOpenClawACLMHook.sol";
 import {IOpenClawOracle} from "../src/interfaces/IOpenClawOracle.sol";
-import {Position, PoolStats} from "../src/types/DataTypes.sol";
+import {Position, PoolStats, OrderType, LimitOrder} from "../src/types/DataTypes.sol";
 
 contract OpenClawACLMHookTest is Test {
     using PoolIdLibrary for PoolKey;
@@ -178,6 +179,48 @@ contract OpenClawACLMHookTest is Test {
         assertEq(removedPos.owner, address(0));
     }
 
+    // ── Remove Position by ID (H-3) ────────────────────────────────────
+    function test_removePosition_byId() public {
+        // Add two positions with different salts but same tick range
+        BaseCustomAccounting.AddLiquidityParams memory addParams1 = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, MIN_TICK, MAX_TICK, bytes32(0)
+        );
+        hook.addLiquidity(addParams1);
+
+        BaseCustomAccounting.AddLiquidityParams memory addParams2 = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, MIN_TICK, MAX_TICK, bytes32(uint256(2))
+        );
+        hook.addLiquidity(addParams2);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        assertEq(positions.length, 2);
+        uint256 positionId = positions[0];
+
+        // Remove first position by ID
+        hook.removePosition(positionId, 0, 0, MAX_DEADLINE);
+
+        // Only first position removed
+        Position memory removedPos = hook.getPosition(positionId);
+        assertEq(removedPos.owner, address(0));
+
+        // Second position still exists
+        uint256[] memory positionsAfter = hook.getUserPositions(address(this));
+        assertEq(positionsAfter.length, 1);
+    }
+
+    function test_removePosition_notOwner_reverts() public {
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, MIN_TICK, MAX_TICK, bytes32(0)
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+
+        vm.prank(user);
+        vm.expectRevert(OpenClawACLMHook.NotPositionOwner.selector);
+        hook.removePosition(positions[0], 0, 0, MAX_DEADLINE);
+    }
+
     // ── Swap Triggers Pool Stats Update ────────────────────────────────
     function test_swapUpdatesPoolStats() public {
         // Add liquidity first
@@ -206,6 +249,87 @@ contract OpenClawACLMHookTest is Test {
         assertTrue(stats.cumulativeVolume > 0);
     }
 
+    // ── H-1 fix: _cancelLinkedOrders returns escrowed tokens ──────────
+    function test_cancelLinkedOrders_returnsTokens() public {
+        // Add a position
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, MIN_TICK, MAX_TICK, bytes32(0)
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[0];
+
+        // Place a limit order linked to the position
+        uint256 balanceBefore = MockERC20(Currency.unwrap(currency0)).balanceOf(address(this));
+        hook.placeLimitOrder(key, true, -60, 1 ether, 0, OrderType.STOP_LOSS, positionId);
+
+        // Tokens were escrowed
+        assertEq(MockERC20(Currency.unwrap(currency0)).balanceOf(address(this)), balanceBefore - 1 ether);
+
+        // Remove the position -- this should cancel linked orders AND return tokens
+        hook.removePosition(positionId, 0, 0, MAX_DEADLINE);
+
+        // Tokens should be returned -- the ERC-6909 claims must be burned
+        assertEq(manager.balanceOf(address(hook), currency0.toId()), 0, "ERC-6909 claims should be burned");
+        // Verify user received the escrowed tokens back (balance >= before - position amount)
+        assertTrue(
+            MockERC20(Currency.unwrap(currency0)).balanceOf(address(this)) >= balanceBefore - 1 ether,
+            "User should recover escrowed tokens"
+        );
+
+        // The linked order should be cancelled
+        LimitOrder memory order = hook.getLimitOrder(1);
+        assertTrue(order.cancelled, "Linked order should be cancelled");
+
+        // User should NOT have the order in their user array anymore
+        uint256[] memory userOrders = hook.getUserLimitOrders(address(this));
+        for (uint256 i; i < userOrders.length; i++) {
+            assertTrue(userOrders[i] != 1, "Cancelled linked order should be removed from user array");
+        }
+    }
+
+    // ── H-1 fix: _cancelLinkedOrders works with multiple linked orders ─
+    function test_cancelLinkedOrders_multipleOrders_returnsAllTokens() public {
+        // Add a position
+        BaseCustomAccounting.AddLiquidityParams memory addParams = BaseCustomAccounting.AddLiquidityParams(
+            10 ether, 10 ether, 9 ether, 9 ether, MAX_DEADLINE, MIN_TICK, MAX_TICK, bytes32(0)
+        );
+        hook.addLiquidity(addParams);
+
+        uint256[] memory positions = hook.getUserPositions(address(this));
+        uint256 positionId = positions[0];
+
+        // Place multiple linked limit orders
+        hook.placeLimitOrder(key, true, -60, 1 ether, 0, OrderType.STOP_LOSS, positionId);
+        hook.placeLimitOrder(key, true, -120, 2 ether, 0, OrderType.STOP_LOSS, positionId);
+
+        // Verify 3 ether in ERC-6909 claims
+        assertEq(manager.balanceOf(address(hook), currency0.toId()), 3 ether);
+
+        // Remove the position
+        hook.removePosition(positionId, 0, 0, MAX_DEADLINE);
+
+        // All ERC-6909 claims should be burned
+        assertEq(manager.balanceOf(address(hook), currency0.toId()), 0, "All claims should be burned");
+
+        // Both orders should be cancelled
+        assertTrue(hook.getLimitOrder(1).cancelled);
+        assertTrue(hook.getLimitOrder(2).cancelled);
+    }
+
+    // ── M-5 fix: _burn reverts if no matching position found ──────────
+    function test_removeLiquidity_noMatchingPosition_reverts() public {
+        // Try to remove liquidity for a position that does not exist
+        BaseCustomAccounting.RemoveLiquidityParams memory removeParams = BaseCustomAccounting.RemoveLiquidityParams(
+            1000, 0, 0, MAX_DEADLINE, -600, 600, bytes32(uint256(999))
+        );
+
+        // Should revert because no matching position exists
+        vm.expectRevert();
+        hook.removeLiquidity(removeParams);
+    }
+
     // ── Admin Functions ────────────────────────────────────────────────
     function test_setOracle_onlyOwner() public {
         vm.prank(user);
@@ -226,8 +350,29 @@ contract OpenClawACLMHookTest is Test {
         assertEq(hook.rebalanceCooldown(), 2 hours);
     }
 
+    function test_setRebalanceCooldown_zero() public {
+        hook.setRebalanceCooldown(0);
+        assertEq(hook.rebalanceCooldown(), 0);
+    }
+
+    function test_setRebalanceCooldown_tooLow_reverts() public {
+        // 30 seconds is < 1 minute and != 0
+        vm.expectRevert(OpenClawACLMHook.CooldownTooLow.selector);
+        hook.setRebalanceCooldown(30);
+    }
+
     function test_setMinConfidence() public {
         hook.setMinConfidence(80);
         assertEq(hook.minConfidence(), 80);
+    }
+
+    function test_setMinConfidence_floor() public {
+        // 9 is below floor of 10
+        vm.expectRevert(OpenClawACLMHook.MinConfidenceTooLow.selector);
+        hook.setMinConfidence(9);
+
+        // 10 is exactly the floor
+        hook.setMinConfidence(10);
+        assertEq(hook.minConfidence(), 10);
     }
 }

@@ -13,6 +13,15 @@ FeeOptimizer           Access control           Auto-rebalance
 DecisionAggregator                              Limit orders
 ```
 
+## Deployed Contracts (Sepolia)
+
+| Contract | Address |
+|----------|---------|
+| OpenClawOracle | [`0x300Fa0Af86201A410bEBD511Ca7FB81548a0f027`](https://sepolia.etherscan.io/address/0x300Fa0Af86201A410bEBD511Ca7FB81548a0f027) |
+| OpenClawACLMHook | [`0xbD2802B7215530894d5696ab8450115f56b1fAC0`](https://sepolia.etherscan.io/address/0xbD2802B7215530894d5696ab8450115f56b1fAC0) |
+
+PoolManager: `0xE03A1074c86CFeDd5C142C4F04F1a1536e203543` (Uniswap v4 Sepolia)
+
 ## Project Structure
 
 ```

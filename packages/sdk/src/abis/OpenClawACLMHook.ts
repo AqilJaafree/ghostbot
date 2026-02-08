@@ -17,6 +17,19 @@ export const OpenClawACLMHookABI = [
   },
   {
     "type": "function",
+    "name": "MAX_FEE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint24",
+        "internalType": "uint24"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "MAX_ORDERS_PER_SWAP",
     "inputs": [],
     "outputs": [
@@ -904,6 +917,82 @@ export const OpenClawACLMHookABI = [
   },
   {
     "type": "function",
+    "name": "claimFilledOrder",
+    "inputs": [
+      {
+        "name": "orderId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimRebalanceSurplus",
+    "inputs": [
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "currency",
+        "type": "address",
+        "internalType": "Currency"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "executeOrderExternal",
+    "inputs": [
+      {
+        "name": "key",
+        "type": "tuple",
+        "internalType": "struct PoolKey",
+        "components": [
+          {
+            "name": "currency0",
+            "type": "address",
+            "internalType": "Currency"
+          },
+          {
+            "name": "currency1",
+            "type": "address",
+            "internalType": "Currency"
+          },
+          {
+            "name": "fee",
+            "type": "uint24",
+            "internalType": "uint24"
+          },
+          {
+            "name": "tickSpacing",
+            "type": "int24",
+            "internalType": "int24"
+          },
+          {
+            "name": "hooks",
+            "type": "address",
+            "internalType": "contract IHooks"
+          }
+        ]
+      },
+      {
+        "name": "orderId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "getHookPermissions",
     "inputs": [],
     "outputs": [
@@ -1047,6 +1136,16 @@ export const OpenClawACLMHookABI = [
             "name": "cancelled",
             "type": "bool",
             "internalType": "bool"
+          },
+          {
+            "name": "claimCurrency",
+            "type": "address",
+            "internalType": "Currency"
+          },
+          {
+            "name": "claimAmount",
+            "type": "uint128",
+            "internalType": "uint128"
           }
         ]
       }
@@ -1248,6 +1347,16 @@ export const OpenClawACLMHookABI = [
         "name": "cancelled",
         "type": "bool",
         "internalType": "bool"
+      },
+      {
+        "name": "claimCurrency",
+        "type": "address",
+        "internalType": "Currency"
+      },
+      {
+        "name": "claimAmount",
+        "type": "uint128",
+        "internalType": "uint128"
       }
     ],
     "stateMutability": "view"
@@ -1569,6 +1678,53 @@ export const OpenClawACLMHookABI = [
   },
   {
     "type": "function",
+    "name": "rebalancePosition",
+    "inputs": [
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "newTickLower",
+        "type": "int24",
+        "internalType": "int24"
+      },
+      {
+        "name": "newTickUpper",
+        "type": "int24",
+        "internalType": "int24"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "rebalanceSurplus",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "Currency"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "removeLiquidity",
     "inputs": [
       {
@@ -1617,6 +1773,40 @@ export const OpenClawACLMHookABI = [
     "outputs": [
       {
         "name": "delta",
+        "type": "int256",
+        "internalType": "BalanceDelta"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "removePosition",
+    "inputs": [
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount0Min",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount1Min",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
         "type": "int256",
         "internalType": "BalanceDelta"
       }
@@ -1694,7 +1884,7 @@ export const OpenClawACLMHookABI = [
     ],
     "outputs": [
       {
-        "name": "returnData",
+        "name": "",
         "type": "bytes",
         "internalType": "bytes"
       }
@@ -1915,6 +2105,31 @@ export const OpenClawACLMHookABI = [
   },
   {
     "type": "event",
+    "name": "LimitOrderClaimed",
+    "inputs": [
+      {
+        "name": "orderId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint128",
+        "indexed": false,
+        "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "LimitOrderExecuted",
     "inputs": [
       {
@@ -1928,6 +2143,25 @@ export const OpenClawACLMHookABI = [
         "type": "uint128",
         "indexed": false,
         "internalType": "uint128"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "LimitOrderExecutionFailed",
+    "inputs": [
+      {
+        "name": "orderId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "reason",
+        "type": "bytes",
+        "indexed": false,
+        "internalType": "bytes"
       }
     ],
     "anonymous": false
@@ -2053,6 +2287,62 @@ export const OpenClawACLMHookABI = [
   },
   {
     "type": "event",
+    "name": "RebalanceRequested",
+    "inputs": [
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "newTickLower",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      },
+      {
+        "name": "newTickUpper",
+        "type": "int24",
+        "indexed": false,
+        "internalType": "int24"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "SurplusClaimed",
+    "inputs": [
+      {
+        "name": "positionId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "owner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "currency",
+        "type": "address",
+        "indexed": false,
+        "internalType": "Currency"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Unpaused",
     "inputs": [
       {
@@ -2066,7 +2356,17 @@ export const OpenClawACLMHookABI = [
   },
   {
     "type": "error",
+    "name": "AlreadyClaimed",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "AlreadyInitialized",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CooldownTooLow",
     "inputs": []
   },
   {
@@ -2086,6 +2386,11 @@ export const OpenClawACLMHookABI = [
   },
   {
     "type": "error",
+    "name": "FeeTooHigh",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "HookNotImplemented",
     "inputs": []
   },
@@ -2101,7 +2406,32 @@ export const OpenClawACLMHookABI = [
   },
   {
     "type": "error",
+    "name": "InvalidPoolKey",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidTickRange",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "LiquidityOnlyViaHook",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MinConfidenceTooLow",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NoSurplusToClaim",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAutoRebalance",
     "inputs": []
   },
   {
@@ -2112,6 +2442,11 @@ export const OpenClawACLMHookABI = [
   {
     "type": "error",
     "name": "NotPoolManager",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotPositionOwner",
     "inputs": []
   },
   {
@@ -2127,6 +2462,11 @@ export const OpenClawACLMHookABI = [
   {
     "type": "error",
     "name": "OrderAlreadyExecuted",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OrderNotExecuted",
     "inputs": []
   },
   {
@@ -2154,6 +2494,16 @@ export const OpenClawACLMHookABI = [
   {
     "type": "error",
     "name": "PoolNotInitialized",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PositionNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "PositionNotFoundOnBurn",
     "inputs": []
   },
   {

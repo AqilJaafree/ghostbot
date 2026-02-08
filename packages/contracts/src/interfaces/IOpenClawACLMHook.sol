@@ -2,26 +2,20 @@
 pragma solidity ^0.8.26;
 
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {Position, LimitOrder, PoolStats, OrderType} from "../types/DataTypes.sol";
 
 interface IOpenClawACLMHook {
-    // Events
-    event PositionCreated(
-        uint256 indexed positionId, address indexed owner, int24 tickLower, int24 tickUpper, uint128 liquidity
-    );
-    event PositionClosed(uint256 indexed positionId, address indexed owner);
-    event AutoRebalanced(
-        uint256 indexed positionId, int24 oldTickLower, int24 oldTickUpper, int24 newTickLower, int24 newTickUpper
-    );
-    event DynamicFeeUpdated(bytes32 indexed poolId, uint24 oldFee, uint24 newFee);
-    event LimitOrderPlaced(uint256 indexed orderId, address indexed owner, int24 triggerTick, bool zeroForOne);
-    event LimitOrderCancelled(uint256 indexed orderId);
-    event LimitOrderExecuted(uint256 indexed orderId, uint128 amountOut);
-
     // Position management
     function getUserPositions(address user) external view returns (uint256[] memory);
     function getPosition(uint256 positionId) external view returns (Position memory);
     function getPoolStats(bytes32 poolId) external view returns (PoolStats memory);
+    function rebalancePosition(uint256 positionId, int24 newTickLower, int24 newTickUpper) external;
+    function removePosition(uint256 positionId, uint256 amount0Min, uint256 amount1Min, uint256 deadline)
+        external
+        returns (BalanceDelta);
+    function claimRebalanceSurplus(uint256 positionId, Currency currency) external;
 
     // Limit orders
     function placeLimitOrder(
@@ -34,6 +28,7 @@ interface IOpenClawACLMHook {
         uint256 linkedPositionId
     ) external returns (uint256 orderId);
     function cancelLimitOrder(uint256 orderId) external;
+    function claimFilledOrder(uint256 orderId) external;
     function getUserLimitOrders(address user) external view returns (uint256[] memory);
     function getLimitOrder(uint256 orderId) external view returns (LimitOrder memory);
 }

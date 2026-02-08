@@ -166,6 +166,35 @@ contract OpenClawOracleTest is Test {
         oracle.postRebalanceSignal(poolId, signal);
     }
 
+    // ── Future Timestamp (M-2) ─────────────────────────────────────────
+    function test_futureTimestamp_rebalanceSignal_reverts() public {
+        vm.warp(1000);
+        RebalanceSignal memory signal = RebalanceSignal({
+            positionId: 1,
+            newTickLower: -100,
+            newTickUpper: 100,
+            confidence: 80,
+            timestamp: block.timestamp + 1 // 1 second in the future
+        });
+
+        vm.prank(bot);
+        vm.expectRevert(OpenClawOracle.FutureTimestamp.selector);
+        oracle.postRebalanceSignal(poolId, signal);
+    }
+
+    function test_futureTimestamp_feeRecommendation_reverts() public {
+        vm.warp(1000);
+        FeeRecommendation memory rec = FeeRecommendation({
+            fee: 3000,
+            confidence: 85,
+            timestamp: block.timestamp + 1
+        });
+
+        vm.prank(bot);
+        vm.expectRevert(OpenClawOracle.FutureTimestamp.selector);
+        oracle.postFeeRecommendation(poolId, rec);
+    }
+
     // ── Optimal Range ──────────────────────────────────────────────────
     function test_getOptimalRange() public {
         vm.prank(bot);

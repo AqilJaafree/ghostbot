@@ -268,6 +268,24 @@ export const OpenClawOracleABI = [
   },
   {
     "type": "function",
+    "name": "reportOrderExecution",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "orderId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "setBot",
     "inputs": [
       {
@@ -358,6 +376,25 @@ export const OpenClawOracleABI = [
   },
   {
     "type": "event",
+    "name": "OrderExecutionReported",
+    "inputs": [
+      {
+        "name": "poolId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "orderId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "OwnershipTransferred",
     "inputs": [
       {
@@ -418,6 +455,11 @@ export const OpenClawOracleABI = [
       }
     ],
     "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "FutureTimestamp",
+    "inputs": []
   },
   {
     "type": "error",

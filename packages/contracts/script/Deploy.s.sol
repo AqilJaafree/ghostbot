@@ -14,8 +14,8 @@ import {OpenClawACLMHook} from "../src/OpenClawACLMHook.sol";
 import {IOpenClawOracle} from "../src/interfaces/IOpenClawOracle.sol";
 
 contract Deploy is Script {
-    // Uniswap v4 PoolManager address (same across all chains)
-    address constant POOL_MANAGER = 0x000000000004444c5dc75cB358380D2e3dE08A90;
+    // Uniswap v4 PoolManager on Sepolia
+    address constant POOL_MANAGER = 0xE03A1074c86CFeDd5C142C4F04F1a1536e203543;
 
     // CREATE2 deployer proxy
     address constant CREATE2_DEPLOYER = 0x4e59b44847b379578588920cA78FbF26c0B4956C;

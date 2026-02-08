@@ -20,6 +20,7 @@ import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 import {OpenClawOracle} from "../src/OpenClawOracle.sol";
 import {OpenClawACLMHook} from "../src/OpenClawACLMHook.sol";
 import {IOpenClawOracle} from "../src/interfaces/IOpenClawOracle.sol";
+import {IOpenClawACLMHook} from "../src/interfaces/IOpenClawACLMHook.sol";
 import {FeeRecommendation, PoolStats} from "../src/types/DataTypes.sol";
 
 contract DynamicFeeTest is Test {
@@ -158,6 +159,30 @@ contract DynamicFeeTest is Test {
         bytes32 id = PoolId.unwrap(poolId);
         PoolStats memory stats = hook.getPoolStats(id);
         assertEq(stats.currentFee, 3000); // Unchanged
+    }
+
+    function test_dynamicFee_tooHigh_reverts() public {
+        // Post a fee recommendation above MAX_FEE (1_000_000)
+        FeeRecommendation memory rec = FeeRecommendation({
+            fee: 1_500_000,
+            confidence: 90,
+            timestamp: block.timestamp
+        });
+        vm.prank(bot);
+        oracle.postFeeRecommendation(PoolId.unwrap(poolId), rec);
+
+        // Swap should revert (FeeTooHigh wrapped by PoolManager)
+        SwapParams memory params = SwapParams({
+            zeroForOne: true,
+            amountSpecified: -1 ether,
+            sqrtPriceLimitX96: MIN_PRICE_LIMIT
+        });
+        PoolSwapTest.TestSettings memory settings = PoolSwapTest.TestSettings({
+            takeClaims: false,
+            settleUsingBurn: false
+        });
+        vm.expectRevert();
+        swapRouter.swap(key, params, settings, "");
     }
 
     function _doSwap(bool zeroForOne, int256 amount) internal {

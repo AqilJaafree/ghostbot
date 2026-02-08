@@ -25,6 +25,9 @@ DecisionAggregator                              Limit orders
 
 **Pool Configuration:** tick 0 (1:1 price), tickSpacing=60, DYNAMIC_FEE (`0x800000`)
 
+## Clawhub Skill
+| [`Clawhub`](https://clawhub.ai/AqilJaafree/ghostbot-aclm)|
+
 ## Project Structure
 
 ```

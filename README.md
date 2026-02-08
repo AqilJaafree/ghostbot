@@ -17,10 +17,13 @@ DecisionAggregator                              Limit orders
 
 | Contract | Address |
 |----------|---------|
-| OpenClawOracle | [`0x300Fa0Af86201A410bEBD511Ca7FB81548a0f027`](https://sepolia.etherscan.io/address/0x300Fa0Af86201A410bEBD511Ca7FB81548a0f027) |
 | OpenClawACLMHook | [`0xbD2802B7215530894d5696ab8450115f56b1fAC0`](https://sepolia.etherscan.io/address/0xbD2802B7215530894d5696ab8450115f56b1fAC0) |
+| OpenClawOracle | [`0x300Fa0Af86201A410bEBD511Ca7FB81548a0f027`](https://sepolia.etherscan.io/address/0x300Fa0Af86201A410bEBD511Ca7FB81548a0f027) |
+| PoolManager | [`0xE03A1074c86CFeDd5C142C4F04F1a1536e203543`](https://sepolia.etherscan.io/address/0xE03A1074c86CFeDd5C142C4F04F1a1536e203543) |
+| Token GBB (currency0) | [`0x07B55AfA83169093276898f789A27a4e2d511F36`](https://sepolia.etherscan.io/address/0x07B55AfA83169093276898f789A27a4e2d511F36) |
+| Token GBA (currency1) | [`0xB960eD7FC078037608615a0b62a1a0295493f26E`](https://sepolia.etherscan.io/address/0xB960eD7FC078037608615a0b62a1a0295493f26E) |
 
-PoolManager: `0xE03A1074c86CFeDd5C142C4F04F1a1536e203543` (Uniswap v4 Sepolia)
+**Pool Configuration:** tick 0 (1:1 price), tickSpacing=60, DYNAMIC_FEE (`0x800000`)
 
 ## Project Structure
 

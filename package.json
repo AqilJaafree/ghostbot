@@ -8,7 +8,9 @@
     "generate:abis": "node scripts/copy-abis.mjs",
     "test:contracts": "cd packages/contracts && forge test -vvv",
     "test:bot": "cd packages/bot && pnpm run test",
-    "dev:bot": "cd packages/bot && pnpm run dev"
+    "dev:bot": "cd packages/bot && pnpm run dev",
+    "video:studio": "cd packages/video && pnpm run studio",
+    "video:render": "cd packages/video && pnpm run render"
   },
   "engines": {
     "node": ">=18",

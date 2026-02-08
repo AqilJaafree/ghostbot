@@ -52,6 +52,9 @@ pnpm-debug.log*
 coverage/
 lcov.info
 
+# Video (Remotion - large output files)
+packages/video/
+
 # Misc
 .turbo/
 .vercel/
